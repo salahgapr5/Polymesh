@@ -76,10 +76,6 @@ jobs:
           paths:
             - "~/.cargo"
             - "./target"
-      - persist_to_workspace:
-          root: .
-          paths:
-            - target
 
   coverage:
     docker:
@@ -88,8 +84,13 @@ jobs:
       VERBOSE: "1"
     steps:
       - checkout
-      - attach_workspace:
-          at: .
+      - run:
+          name: Store rust version in a file for cache key
+          command: rustc --version > rust.version
+      - restore_cache:
+          keys:
+            - v1-coverage-cache-{{ checksum "./rust.version" }}-{{ checksum "./Cargo.lock" }}
+            - v1-coverage-cache-{{ checksum "./rust.version" }}
       - run:
           name: Coverage
           command: >-
@@ -106,6 +107,12 @@ jobs:
             --ignore-tests
             --coveralls ${COVERALLS_REPO_TOKEN}
           no_output_timeout: 30m
+      - save_cache:
+          key: v1-coverage-cache-{{ checksum "./rust.version" }}-{{ checksum "./Cargo.lock" }}
+          paths:
+            - "~/.cargo"
+            - "./target"
+          when: always
 
   cli:
     docker:
@@ -176,9 +183,7 @@ workflows:
       - lint
       - cli
       - test
-      - coverage:
-          requires:
-            - test
+      - coverage
 
   daily-builds:
     triggers:
