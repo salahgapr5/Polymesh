@@ -88,12 +88,12 @@ jobs:
       VERBOSE: "1"
     steps:
       - checkout
-      #- attach_workspace:
-      #    at: .
+      - attach_workspace:
+          at: .
       - run:
           name: Coverage
           command: >-
-            cargo build -j 1 && cargo tarpaulin
+            cargo tarpaulin
             --packages polymesh-runtime-common
             --packages pallet-staking
             --packages pallet-group
@@ -176,9 +176,9 @@ workflows:
       - lint
       - cli
       - test
-      - coverage
-      #    requires:
-      #      - test
+      - coverage:
+          requires:
+            - test
 
   daily-builds:
     triggers:
