@@ -34,6 +34,7 @@ jobs:
           paths:
             - "~/.cargo"
             - "./target"
+
   test:
     docker:
       - image: maxsam4/rust
@@ -75,6 +76,37 @@ jobs:
           paths:
             - "~/.cargo"
             - "./target"
+      - persist_to_workspace:
+          root: .
+          paths:
+            - target
+
+  coverage:
+    docker:
+      - image: maxsam4/rust
+    environment:
+      VERBOSE: "1"
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Coverage
+          command: >-
+            cargo tarpaulin
+            --packages polymesh-runtime-common
+            --packages pallet-staking
+            --packages pallet-group
+            --packages polymesh-primitives
+            --packages node-rpc-runtime-api
+            --packages pallet-transaction-payment
+            --packages pallet-cdd-offchain-worker
+            --features default_identity
+            --count
+            --ignore-tests
+            --coveralls ${COVERALLS_REPO_TOKEN}
+          no_output_timeout: 30m
+
   cli:
     docker:
       - image: maxsam4/rust
@@ -112,6 +144,7 @@ jobs:
             - "~/.cargo"
             - "./target"
             - "./scripts/cli/node_modules"
+
   clippy:
     docker:
       - image: maxsam4/rust
@@ -135,6 +168,7 @@ jobs:
           paths:
             - "~/.cargo"
             - "./target"
+
 workflows:
   version: 2
   commit:
@@ -142,6 +176,10 @@ workflows:
       - lint
       - cli
       - test
+      - coverage:
+          requires:
+            - test
+
   daily-builds:
     triggers:
       - schedule:
