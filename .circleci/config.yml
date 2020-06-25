@@ -106,6 +106,7 @@ jobs:
             --count
             --ignore-tests
             --coveralls ${COVERALLS_REPO_TOKEN}
+            -- -j 1
           no_output_timeout: 30m
       - save_cache:
           key: v1-coverage-cache-{{ checksum "./rust.version" }}-{{ checksum "./Cargo.lock" }}
