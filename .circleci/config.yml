@@ -88,8 +88,8 @@ jobs:
       VERBOSE: "1"
     steps:
       - checkout
-      - attach_workspace:
-          at: .
+      #- attach_workspace:
+      #    at: .
       - run:
           name: Coverage
           command: >-
@@ -177,8 +177,8 @@ workflows:
       - cli
       - test
       - coverage:
-          requires:
-            - test
+      #    requires:
+      #      - test
 
   daily-builds:
     triggers:
