@@ -176,7 +176,7 @@ workflows:
       - lint
       - cli
       - test
-      - coverage:
+      - coverage
       #    requires:
       #      - test
 
