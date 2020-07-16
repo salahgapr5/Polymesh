@@ -54,17 +54,24 @@
 // Ensure we're `no_std` when compiling for Wasm.
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::{Decode, Encode};
+use core::convert::TryFrom;
 use frame_support::{
-    decl_error, decl_event, decl_module, decl_storage,
-    weights::{DispatchClass, FunctionOf, GetDispatchInfo},
+    decl_error, decl_event, decl_module, decl_storage, ensure,
+    weights::{DispatchClass, FunctionOf, GetDispatchInfo, SimpleDispatchInfo},
     Parameter,
 };
-use frame_system as system;
-use sp_runtime::{traits::Dispatchable, DispatchError, DispatchResult};
+use frame_system::RawOrigin;
+use polymesh_common_utilities::{
+    balances::CheckCdd, identity::AuthorizationNonce, identity::Trait as IdentityModule,
+};
+use polymesh_identity::idenity::idenity;
+use polymesh_primitives::AccountKey;
+use sp_runtime::{traits::Dispatchable, traits::Verify, DispatchError, DispatchResult};
 use sp_std::prelude::*;
 
 /// Configuration trait.
-pub trait Trait: frame_system::Trait {
+pub trait Trait: frame_system::Trait + IdentityModule {
     /// The overarching event type.
     type Event: From<Event> + Into<<Self as frame_system::Trait>::Event>;
 
@@ -73,11 +80,23 @@ pub trait Trait: frame_system::Trait {
 }
 
 decl_storage! {
-    trait Store for Module<T: Trait> as Utility { }
+    trait Store for Module<T: Trait> as Utility {
+        Nonces get(fn nonces): map hasher(twox_64_concat) T::AccountId => AuthorizationNonce;
+    }
 }
 
 decl_error! {
     pub enum Error for Module<T: Trait> {
+        /// Offchain signature is invalid
+        InvalidSignature,
+        /// Target does not have a valid CDD
+        TargetCddMissing,
+        /// Origin does not have a valid CDD
+        OriginCddMissing,
+        /// Provided nonce was invalid
+        /// If the provided nonce < current nonce, the call was already executed
+        /// If the provided nonce > current nonce, the call(s) before the current failed to execute
+        InvalidNonce(current, provided: u64),
     }
 }
 
@@ -91,6 +110,12 @@ decl_event! {
         /// Batch of dispatches completed fully with no error.
         BatchCompleted,
     }
+}
+
+#[derive(Encode, Decode)]
+pub struct UniqueCall<T: Trait> {
+    nonce: AuthorizationNonce,
+    call: T::Call,
 }
 
 decl_module! {
@@ -147,6 +172,44 @@ decl_module! {
             Self::deposit_event(Event::BatchCompleted);
 
             Ok(())
+        }
+
+        /// TODO docs
+        #[weight = SimpleDispatchInfo::FixedNormal(10_000)] // TODO replace this placeholder
+        pub fn relay_tx(
+            origin,
+            target: T::AccountId,
+            signature: <T as IdentityModule>::OffChainSignature,
+            call: UniqueCall
+        ) -> DispatchResult {
+            let origin = system::ensure_signed(origin)?;
+
+           let origin_key = AccountKey::try_from(origin.encode())?;
+           let target_key = AccountKey::try_from(target.encode())?;
+
+           let target_nonce = <Nonces<T>>::get(target_key);
+
+            ensure!(
+                target_nonce == call.nonce,
+                Error::<T>::InvalidNonce(target_nonce, call.nonce)
+            );
+
+            ensure!(
+                signature.verify(call.encode().as_slice(), &target),
+                Error::<T>::InvalidSignature
+            );
+
+            ensure!(
+                T::CddChecker::check_key_cdd(&origin_key),
+                Error::<T>::OriginCddMissing
+            );
+
+            ensure!(
+                T::CddChecker::check_key_cdd(&target_key),
+                Error::<T>::TargetCddMissing
+            );
+
+            call.dispatch(RawOrigin::Signed(target).into())
         }
     }
 }
