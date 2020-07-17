@@ -2185,8 +2185,8 @@ impl<T: Trait> Module<T> {
         value: T::Balance,
         dest: T::AccountId,
     ) -> RestrictionResult {
-        // 4 byte selector of verify_transfer - 0xD9386E41
-        let selector = hex!("D9386E41");
+        // 4 byte selector of verify_transfer - 0x1C55dC0F
+        let selector = hex!("1C55dC0F");
         let balance_to = match to_did {
             Some(did) => T::Balance::encode(&<BalanceOf<T>>::get(ticker, &did)),
             None => T::Balance::encode(&(0.into())),

@@ -10,7 +10,7 @@ name = "abi-gen"
 path = "main.rs"
 
 [dependencies]
-contract = { path = "../..", package = "percentage_transfer_manager", default-features = false, features = ["ink-generate-abi"] }
-ink_lang = { git = "https://github.com/paritytech/ink", package = "ink_lang", default-features = false, features = ["ink-generate-abi"] }
+contract = { path = "../..", package = "PercentageTransferManager", default-features = false }
+ink_metadata = { git = "https://github.com/paritytech/ink", rev = "c24f0ff999635ebcbfa69b4df1762b9808d86e79", package = "ink_metadata", default-features = false}
 serde = "1.0"
 serde_json = "1.0"
