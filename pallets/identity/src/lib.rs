@@ -180,7 +180,7 @@ decl_storage! {
         pub Claims: double_map hasher(blake2_128_concat) Claim1stKey, hasher(blake2_128_concat) Claim2ndKey => IdentityClaim;
 
         // Account => DID
-        pub KeyToIdentityIds get(fn key_to_identity_ids) config(): map hasher(blake2_128_concat) T::AccountId => Option<LinkedKeyInfo>;
+        pub KeyToIdentityIds get(fn key_to_identity_ids) config(): map hasher(blake2_128_concat) T::AccountId => Option<IdentityId>;
 
         /// Nonce to ensure unique actions. starts from 1.
         pub MultiPurposeNonce get(fn multi_purpose_nonce) build(|_| 1u64): u64;
@@ -263,6 +263,17 @@ decl_module! {
         // Initializing events
         // this is needed only if you are using events in your module
         fn deposit_event() = default;
+
+        fn on_runtime_upgrade() -> Weight {
+            // Utility.Multisigs -> Multisig.Multisigs
+            use frame_support::migration::{StorageIterator, put_storage_value};
+            for (key, value) in StorageIterator::<LinkedKeyInfo>::new(b"Identity", b"KeyToIdentityIds").drain() {
+                if let LinkedKeyInfo::Unique(did) = value {
+                    put_storage_value(b"Identity", b"KeyToIdentityIds", &key, did);
+                }
+            }
+            1_000
+        }
 
         // TODO: Remove this function before mainnet. cdd_register_did should be used instead.
         /// Register a new did with a CDD claim for the caller.
@@ -1675,17 +1686,10 @@ impl<T: Trait> Module<T> {
     ///
     /// An Option object containing the `IdentityId` that belongs to the key.
     pub fn get_identity(key: &T::AccountId) -> Option<IdentityId> {
-        if let Some(linked_key_info) = <KeyToIdentityIds<T>>::get(key) {
-            let id = match linked_key_info {
-                LinkedKeyInfo::Unique(id)
-                    if !Self::is_did_frozen(id) || Self::is_master_key(id, key) =>
-                {
-                    Some(id)
-                }
-                _ => None,
-            };
-
-            return id;
+        if let Some(id) = <KeyToIdentityIds<T>>::get(key) {
+            if !Self::is_did_frozen(id) || Self::is_master_key(id, key) {
+                return Some(id);
+            }
         }
         None
     }
@@ -1727,30 +1731,16 @@ impl<T: Trait> Module<T> {
     /// nothing.
     fn link_key_to_did(key: &T::AccountId, did: IdentityId) {
         if <KeyToIdentityIds<T>>::get(key).is_none() {
-            // `key` is not yet linked to any identity, so no constraints.
-            let linked_key_info = LinkedKeyInfo::Unique(did);
-            <KeyToIdentityIds<T>>::insert(key, linked_key_info);
+            <KeyToIdentityIds<T>>::insert(key, did);
         }
     }
 
     /// It unlinks the `key` key from `did`.
     /// If there is no more associated identities, its full entry is removed.
     fn unlink_key_from_did(key: &T::AccountId, did: IdentityId) {
-        if let Some(linked_key_info) = <KeyToIdentityIds<T>>::get(key) {
-            match linked_key_info {
-                LinkedKeyInfo::Unique(did_linked) => {
-                    if did_linked == did {
-                        <KeyToIdentityIds<T>>::remove(key)
-                    }
-                }
-                LinkedKeyInfo::Group(mut dids) => {
-                    dids.retain(|ref_did| *ref_did != did);
-                    if dids.is_empty() {
-                        <KeyToIdentityIds<T>>::remove(key);
-                    } else {
-                        <KeyToIdentityIds<T>>::insert(key, LinkedKeyInfo::Group(dids));
-                    }
-                }
+        if let Some(did_linked) = <KeyToIdentityIds<T>>::get(key) {
+            if did_linked == did {
+                <KeyToIdentityIds<T>>::remove(key)
             }
         }
     }
