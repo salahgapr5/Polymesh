@@ -48,7 +48,6 @@ members = [
     "rpc/runtime-api",
     "node-rpc",
     "rpc",
-    "utils/wasm-builder",
 ]
 
 [dependencies]
