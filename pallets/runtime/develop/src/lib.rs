@@ -30,7 +30,7 @@ pub mod config {
     use pallet_identity as identity;
     use pallet_protocol_fee as protocol_fee;
 
-    pub type AssetConfig = asset::GenesisConfig<crate::Runtime>;
+    pub type AssetConfig = asset::GenesisConfig;
     pub type BalancesConfig = balances::GenesisConfig<crate::Runtime>;
     pub type BridgeConfig = pallet_bridge::GenesisConfig<crate::Runtime>;
     pub type IdentityConfig = identity::GenesisConfig<crate::Runtime>;

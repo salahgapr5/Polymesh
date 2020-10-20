@@ -122,7 +122,7 @@ use sp_core::sr25519::Signature;
 use sp_io::hashing::blake2_256;
 use sp_runtime::{
     traits::{
-        AccountIdConversion, CheckedAdd, Dispatchable, Hash, IdentifyAccount, SaturatedConversion,
+        AccountIdConversion, CheckedAdd, Dispatchable, Hash, IdentifyAccount,
         Verify, Zero,
     },
     AnySignature,
@@ -1369,7 +1369,7 @@ impl<T: Trait> Module<T> {
     #[inline]
     fn is_identity_claim_not_expired_at(id_claim: &IdentityClaim, moment: T::Moment) -> bool {
         if let Some(expiry) = id_claim.expiry {
-            expiry > moment.saturated_into::<u64>()
+            expiry > moment.into()
         } else {
             true
         }
@@ -1477,9 +1477,7 @@ impl<T: Trait> Module<T> {
                 || inactive_not_expired_cdds
                     .iter()
                     .filter(|cdd| cdd.id == id_claim.claim_issuer)
-                    .any(|cdd| {
-                        id_claim.last_update_date < cdd.deactivated_at.saturated_into::<u64>()
-                    }))
+                    .any(|cdd| id_claim.last_update_date < cdd.deactivated_at.into()))
     }
 
     /// It iterates over all claims of type `claim_type` for target `id` identity.
@@ -1677,11 +1675,11 @@ impl<T: Trait> Module<T> {
     ) {
         let claim_type = claim.claim_type();
         let scope = claim.as_scope().cloned();
-        let last_update_date = <pallet_timestamp::Module<T>>::get().saturated_into::<u64>();
+        let last_update_date = <pallet_timestamp::Module<T>>::get().into();
         let issuance_date = Self::fetch_claim(target, claim_type, issuer, scope.clone())
             .map_or(last_update_date, |id_claim| id_claim.issuance_date);
 
-        let expiry = expiry.into_iter().map(|m| m.saturated_into::<u64>()).next();
+        let expiry = expiry.map(|m| m.into());
         let pk = Claim1stKey { target, claim_type };
         let sk = Claim2ndKey { issuer, scope };
         let id_claim = IdentityClaim {

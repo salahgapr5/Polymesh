@@ -79,7 +79,7 @@ impl<M: Default> From<IdentityId> for InactiveMember<M> {
     }
 }
 
-pub trait Trait<I>: frame_system::Trait + pallet_timestamp::Trait + IdentityTrait {
+pub trait Trait<I>: frame_system::Trait + IdentityTrait {
     /// The overarching event type.
     type Event: From<Event<Self, I>> + Into<<Self as frame_system::Trait>::Event>;
 

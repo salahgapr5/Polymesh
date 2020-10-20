@@ -823,7 +823,7 @@ construct_runtime!(
         UpgradeCommitteeMembership: group::<Instance4>::{Module, Call, Storage, Event<T>, Config<T>},
 
         //Polymesh
-        Asset: asset::{Module, Call, Storage, Config<T>, Event<T>},
+        Asset: asset::{Module, Call, Storage, Config, Event<T>},
         Dividend: dividend::{Module, Call, Storage, Event<T>},
         Identity: identity::{Module, Call, Storage, Event<T>, Config<T>},
         Bridge: bridge::{Module, Call, Storage, Config<T>, Event<T>},

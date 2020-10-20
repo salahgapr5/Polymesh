@@ -1,3 +1,4 @@
+use crate::Moment;
 use chrono::{Datelike, NaiveDate, NaiveDateTime};
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
@@ -41,7 +42,7 @@ pub enum VariableCalendarUnit {
 /// Either a duration in seconds or a variable length calendar unit.
 pub enum FixedOrVariableCalendarUnit {
     /// A fixed duration in seconds Unix time, not counting leap seconds.
-    Fixed(u64),
+    Fixed(Moment),
     /// A variable length calendar unit.
     Variable(VariableCalendarUnit),
 }
@@ -61,14 +62,14 @@ impl CalendarPeriod {
     /// of seconds they contain. For variable length periods, returns a
     /// `VariableLengthCalendarPeriod`.
     pub fn as_fixed_or_variable(&self) -> FixedOrVariableCalendarUnit {
+        let fixed = |mul| FixedOrVariableCalendarUnit::Fixed(Moment(self.multiplier * mul));
+
         match self.unit {
-            CalendarUnit::Second => FixedOrVariableCalendarUnit::Fixed(self.multiplier),
-            CalendarUnit::Minute => FixedOrVariableCalendarUnit::Fixed(self.multiplier * 60),
-            CalendarUnit::Hour => FixedOrVariableCalendarUnit::Fixed(self.multiplier * 60 * 60),
-            CalendarUnit::Day => FixedOrVariableCalendarUnit::Fixed(self.multiplier * 60 * 60 * 24),
-            CalendarUnit::Week => {
-                FixedOrVariableCalendarUnit::Fixed(self.multiplier * 60 * 60 * 24 * 7)
-            }
+            CalendarUnit::Second => fixed(1),
+            CalendarUnit::Minute => fixed(60),
+            CalendarUnit::Hour => fixed(60 * 60),
+            CalendarUnit::Day => fixed(60 * 60 * 24),
+            CalendarUnit::Week => fixed(60 * 60 * 24 * 7),
             CalendarUnit::Month => {
                 FixedOrVariableCalendarUnit::Variable(VariableCalendarUnit::Month)
             }
@@ -84,7 +85,7 @@ impl CalendarPeriod {
 #[derive(Encode, Decode, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CheckpointSchedule {
     /// Unix time in seconds.
-    pub start: u64,
+    pub start: Moment,
     /// The period at which the checkpoint is set to recur after `start`.
     pub period: CalendarPeriod,
 }
@@ -116,7 +117,7 @@ impl CheckpointSchedule {
     /// * 2020-04-30T00:01:00
     ///
     /// and so on.
-    pub fn next_checkpoint(&self, now_as_secs_utc: u64) -> Option<u64> {
+    pub fn next_checkpoint(&self, now_as_secs_utc: Moment) -> Option<Moment> {
         if self.start > now_as_secs_utc {
             // The start time is in the future.
             return Some(self.start);
@@ -127,17 +128,20 @@ impl CheckpointSchedule {
             // The period is empty while the start time has already passed.
             return None;
         }
+
+        let Moment(start) = self.start;
+        let Moment(now_as_secs_utc) = now_as_secs_utc;
+
         match self.period.as_fixed_or_variable() {
-            FixedOrVariableCalendarUnit::Fixed(period_as_secs) => {
+            FixedOrVariableCalendarUnit::Fixed(Moment(period_as_secs)) => {
                 // The period is of fixed length in seconds Unix time.
-                let secs_since_start = now_as_secs_utc - self.start;
+                let secs_since_start = now_as_secs_utc - start;
                 let elapsed_periods: u64 = secs_since_start / period_as_secs;
-                Some(self.start + period_as_secs * (elapsed_periods + 1))
+                Some(start + period_as_secs * (elapsed_periods + 1))
             }
             FixedOrVariableCalendarUnit::Variable(variable_unit) => {
                 // The period is of variable length.
-                let date_time_start =
-                    NaiveDateTime::from_timestamp(i64::try_from(self.start).ok()?, 0);
+                let date_time_start = NaiveDateTime::from_timestamp(i64::try_from(start).ok()?, 0);
                 let date_start = date_time_start.date();
                 let year_start = date_start.year();
                 let month_start = date_start.month();
@@ -203,6 +207,7 @@ impl CheckpointSchedule {
                 u64::try_from(date_next.and_time(date_time_start.time()).timestamp()).ok()
             }
         }
+        .map(Moment)
     }
 }
 

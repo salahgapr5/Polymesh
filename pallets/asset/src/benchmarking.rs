@@ -84,9 +84,9 @@ benchmarks! {
     register_ticker {
         let t in 1 .. MAX_TICKER_LENGTH as u32;
 
-        <TickerConfig<T>>::put(TickerRegistrationConfig {
+        TickerConfig::put(TickerRegistrationConfig {
             max_ticker_length: MAX_TICKER_LENGTH,
-            registration_length: Some((60 * 24 * 60 * 60).into()),
+            registration_length: Some(Moment(60 * 24 * 60 * 60)),
         });
 
         let origin = make_account::<T>("caller", 1).1;
@@ -143,9 +143,9 @@ benchmarks! {
         let i in 1 .. 100;
         // Funding round name length.
         let f in 1 .. MAX_NAME_LENGTH;
-        <TickerConfig<T>>::put(TickerRegistrationConfig {
+        TickerConfig::put(TickerRegistrationConfig {
             max_ticker_length: MAX_TICKER_LENGTH,
-            registration_length: Some((60 * 24 * 60 * 60).into()),
+            registration_length: Some(Moment(60 * 24 * 60 * 60)),
         });
         let ticker = Ticker::try_from(vec![b'A'; MAX_TICKER_LENGTH as usize].as_slice()).unwrap();
         let name = AssetName::from(vec![b'N'; n as usize].as_slice());

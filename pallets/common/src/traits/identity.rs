@@ -34,7 +34,7 @@ use frame_support::{
 };
 use polymesh_primitives::{
     secondary_key::api::{Permissions, SecondaryKey},
-    AuthorizationData, IdentityClaim, IdentityId, Signatory, Ticker,
+    AuthorizationData, IdentityClaim, IdentityId, Moment, Signatory, Ticker,
 };
 use sp_core::H512;
 use sp_runtime::traits::{Dispatchable, IdentifyAccount, Member, Verify};
@@ -136,7 +136,9 @@ pub trait IdentityToCorporateAction {
 }
 
 /// The module's configuration trait.
-pub trait Trait: CommonTrait + pallet_timestamp::Trait + balances::Trait {
+pub trait Trait:
+    CommonTrait + pallet_timestamp::Trait<Moment: Into<Moment>> + balances::Trait
+{
     /// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
     /// An extrinsic call.

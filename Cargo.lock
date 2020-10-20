@@ -5313,6 +5313,7 @@ dependencies = [
  "chrono",
  "cryptography",
  "curve25519-dalek 2.1.0",
+ "derive_more",
  "frame-support",
  "frame-system",
  "hex",

@@ -111,7 +111,7 @@ use polymesh_common_utilities::{
 };
 use polymesh_primitives::{
     calendar::CheckpointSchedule, AssetIdentifier, AuthorizationData, Document, DocumentName,
-    IdentityId, MetaVersion as ExtVersion, PortfolioId, ScopeId, Signatory, SmartExtension,
+    IdentityId, MetaVersion as ExtVersion, Moment, PortfolioId, ScopeId, Signatory, SmartExtension,
     SmartExtensionName, SmartExtensionType, Ticker,
 };
 use polymesh_primitives_derive::VecU8StrongTyped;
@@ -143,7 +143,7 @@ pub trait Trait:
     /// Time used in computation of checkpoints.
     type UnixTime: UnixTime;
     /// The minimum duration of a checkpoint period, in seconds.
-    type MinCheckpointDurationSecs: Get<u64>;
+    type MinCheckpointDurationSecs: Get<Moment>;
 }
 
 /// The type of an asset represented by a token.
@@ -294,20 +294,20 @@ pub struct ClassicTickerRegistration {
 /// Reusable timestamps from a due checkpoint calculation.
 pub struct DueCheckpointTimestamps {
     /// The time for which the checkpoint was scheduled, in seconds.
-    pub scheduled: u64,
+    pub scheduled: Moment,
     /// The current time in seconds for calculating the next timestamp. `None` indicates that the
     /// next checkpoint is not to be calculated.
-    pub now: Option<u64>,
+    pub now: Option<Moment>,
 }
 
 decl_storage! {
     trait Store for Module<T: Trait> as Asset {
         /// Ticker registration details.
         /// (ticker) -> TickerRegistration
-        pub Tickers get(fn ticker_registration): map hasher(blake2_128_concat) Ticker => TickerRegistration<T::Moment>;
+        pub Tickers get(fn ticker_registration): map hasher(blake2_128_concat) Ticker => TickerRegistration<Moment>;
         /// Ticker registration config.
         /// (ticker) -> TickerRegistrationConfig
-        pub TickerConfig get(fn ticker_registration_config) config(): TickerRegistrationConfig<T::Moment>;
+        pub TickerConfig get(fn ticker_registration_config) config(): TickerRegistrationConfig<Moment>;
         /// Details of the token corresponding to the token ticker.
         /// (ticker) -> SecurityToken details [returns SecurityToken struct]
         pub Tokens get(fn token_details): map hasher(blake2_128_concat) Ticker => SecurityToken<T::Balance>;
@@ -359,12 +359,12 @@ decl_storage! {
             CheckpointSchedule;
         /// The next checkpoint of a ticker.
         /// ticker -> Unix time in seconds
-        pub NextCheckpoints get(fn next_checkpoints): map hasher(blake2_128_concat) Ticker => u64;
+        pub NextCheckpoints get(fn next_checkpoints): map hasher(blake2_128_concat) Ticker => Moment;
         /// Checkpoint timestamps. Every index of a recorded scheduled checkpoint is mapped to the
         /// time when the checkpoint was due. Every index of a manual checkpoint is mapped to the
         /// time when the recording took place.
         /// checkpoint number -> checkpoint timestamp
-        pub CheckpointTimestamps get(fn checkpoint_timestamps): map hasher(identity) u64 => u64;
+        pub CheckpointTimestamps get(fn checkpoint_timestamps): map hasher(identity) u64 => Moment;
         /// Supported extension version.
         pub CompatibleSmartExtVersion get(fn compatible_extension_version): map hasher(blake2_128_concat) SmartExtensionType => ExtVersion;
         /// Balances get stored on the basis of the `ScopeId`.
@@ -380,12 +380,12 @@ decl_storage! {
     }
     add_extra_genesis {
         config(classic_migration_tickers): Vec<ClassicTickerImport>;
-        config(classic_migration_tconfig): TickerRegistrationConfig<T::Moment>;
+        config(classic_migration_tconfig): TickerRegistrationConfig<Moment>;
         config(classic_migration_contract_did): IdentityId;
         config(reserved_country_currency_codes): Vec<Ticker>;
         /// Smart Extension supported version at genesis.
         config(versions): Vec<(SmartExtensionType, ExtVersion)>;
-        build(|config: &GenesisConfig<T>| {
+        build(|config: &GenesisConfig| {
             let cm_did = SystematicIssuers::ClassicMigration.as_id();
             for import in &config.classic_migration_tickers {
                 // Use DID of someone at Polymath if it's a contract-made ticker registration.
@@ -559,7 +559,7 @@ decl_module! {
                 Self::_register_ticker(&ticker, did, None);
             } else {
                 // Ticker already registered by the user.
-                <Tickers<T>>::mutate(&ticker, |tr| tr.expiry = None);
+                Tickers::mutate(&ticker, |tr| tr.expiry = None);
             }
 
             let token = SecurityToken {
@@ -678,8 +678,7 @@ decl_module! {
         #[weight = T::DbWeight::get().reads_writes(3, 2) + 400_000_000]
         pub fn create_checkpoint(origin, ticker: Ticker) -> DispatchResult {
             let did = Self::ensure_perms_owner(origin, &ticker)?;
-            let now_as_secs = T::UnixTime::now().as_secs().saturated_into::<u64>();
-            Self::_create_checkpoint_emit(ticker, now_as_secs, did)
+            Self::_create_checkpoint_emit(ticker, Self::now_unix(), did)
         }
 
         /// Creates a checkpoint schedule. Can only be called by the token owner primary or
@@ -705,7 +704,7 @@ decl_module! {
                 !CheckpointSchedules::contains_key(&ticker),
                 Error::<T>::CheckpointScheduleAlreadyExists
             );
-            let now_as_secs = T::UnixTime::now().as_secs().saturated_into::<u64>();
+            let now_as_secs = Self::now_unix();
             // Check the lower limit of the checkpoint period duration by computing the next
             // checkpoint from the start of the schedule.
             ensure!(
@@ -1127,7 +1126,6 @@ decl_event! {
     pub enum Event<T>
         where
         Balance = <T as CommonTrait>::Balance,
-        Moment = <T as pallet_timestamp::Trait>::Moment,
         AccountId = <T as frame_system::Trait>::AccountId,
     {
         /// Event for transfer of tokens.
@@ -1196,7 +1194,7 @@ decl_event! {
         ExtensionUnArchived(IdentityId, Ticker, AccountId),
         /// Emitted event for Checkpoint creation.
         /// caller DID. ticker, checkpoint count, checkpoint timestamp.
-        CheckpointCreated(IdentityId, Ticker, u64, u64),
+        CheckpointCreated(IdentityId, Ticker, u64, Moment),
         /// An event emitted when the primary issuance agent of an asset is transferred.
         /// First DID is the old primary issuance agent and the second DID is the new primary issuance agent.
         PrimaryIssuanceAgentTransferred(IdentityId, Ticker, Option<IdentityId>, Option<IdentityId>),
@@ -1450,17 +1448,22 @@ impl<T: Trait> Module<T> {
         Self::token_details(ticker).owner_did == did
     }
 
-    fn maybe_ticker(ticker: &Ticker) -> Option<TickerRegistration<T::Moment>> {
-        <Tickers<T>>::contains_key(ticker).then(|| <Tickers<T>>::get(ticker))
+    fn maybe_ticker(ticker: &Ticker) -> Option<TickerRegistration<Moment>> {
+        Tickers::contains_key(ticker).then(|| Tickers::get(ticker))
+    }
+
+    fn now() -> Moment {
+        <pallet_timestamp::Module<T>>::get().into()
+    }
+
+    pub fn now_unix() -> Moment {
+        Moment(T::UnixTime::now().as_secs().saturated_into::<u64>())
     }
 
     pub fn is_ticker_available(ticker: &Ticker) -> bool {
         // Assumes uppercase ticker
         if let Some(ticker) = Self::maybe_ticker(ticker) {
-            ticker
-                .expiry
-                .filter(|&e| <pallet_timestamp::Module<T>>::get() > e)
-                .is_some()
+            ticker.expiry.filter(|&e| Self::now() > e).is_some()
         } else {
             true
         }
@@ -1470,8 +1473,7 @@ impl<T: Trait> Module<T> {
     pub fn is_ticker_registry_valid(ticker: &Ticker, did: IdentityId) -> bool {
         // Assumes uppercase ticker
         if let Some(ticker) = Self::maybe_ticker(ticker) {
-            let now = <pallet_timestamp::Module<T>>::get();
-            ticker.owner == did && ticker.expiry.filter(|&e| now > e).is_none()
+            ticker.owner == did && ticker.expiry.filter(|&e| Self::now() > e).is_none()
         } else {
             false
         }
@@ -1489,9 +1491,7 @@ impl<T: Trait> Module<T> {
         match Self::maybe_ticker(ticker) {
             Some(TickerRegistration { expiry, owner }) => match expiry {
                 // Ticker registered to someone but expired and can be registered again.
-                Some(expiry) if <pallet_timestamp::Module<T>>::get() > expiry => {
-                    TickerRegistrationStatus::Available
-                }
+                Some(expiry) if Self::now() > expiry => TickerRegistrationStatus::Available,
                 // Ticker is already registered to provided did (may or may not expire in future).
                 _ if owner == did => TickerRegistrationStatus::RegisteredByDid,
                 // Ticker registered to someone else and hasn't expired.
@@ -1507,8 +1507,8 @@ impl<T: Trait> Module<T> {
         ticker: &Ticker,
         to_did: IdentityId,
         no_re_register: bool,
-        config: impl FnOnce() -> TickerRegistrationConfig<T::Moment>,
-    ) -> Result<Option<T::Moment>, DispatchError> {
+        config: impl FnOnce() -> TickerRegistrationConfig<Moment>,
+    ) -> Result<Option<Moment>, DispatchError> {
         ensure!(
             !<Tokens<T>>::contains_key(&ticker),
             Error::<T>::AssetAlreadyCreated
@@ -1531,15 +1531,13 @@ impl<T: Trait> Module<T> {
             return Err(Error::<T>::TickerAlreadyRegistered.into());
         }
 
-        Ok(config
-            .registration_length
-            .map(|exp| <pallet_timestamp::Module<T>>::get() + exp))
+        Ok(config.registration_length.map(|exp| Self::now() + exp))
     }
 
     /// Without charging any fees,
     /// register the given `ticker` to the `owner` identity,
     /// with the registration being removed at `expiry`.
-    fn _register_ticker(ticker: &Ticker, owner: IdentityId, expiry: Option<T::Moment>) {
+    fn _register_ticker(ticker: &Ticker, owner: IdentityId, expiry: Option<Moment>) {
         if let Some(ticker_details) = Self::maybe_ticker(ticker) {
             <AssetOwnershipRelations>::remove(ticker_details.owner, ticker);
         }
@@ -1547,8 +1545,8 @@ impl<T: Trait> Module<T> {
         let ticker_registration = TickerRegistration { owner, expiry };
 
         // Store ticker registration details
-        <Tickers<T>>::insert(ticker, ticker_registration);
-        <AssetOwnershipRelations>::insert(owner, ticker, AssetOwnershipRelation::TickerOwned);
+        Tickers::insert(ticker, ticker_registration);
+        AssetOwnershipRelations::insert(owner, ticker, AssetOwnershipRelation::TickerOwned);
 
         // Not a classic ticker anymore if it was.
         ClassicTickers::remove(&ticker);
@@ -1796,7 +1794,11 @@ impl<T: Trait> Module<T> {
     }
 
     /// Create a checkpoint for `ticker` at `time` with `did` as actor.
-    pub fn _create_checkpoint_emit(ticker: Ticker, time: u64, did: IdentityId) -> DispatchResult {
+    pub fn _create_checkpoint_emit(
+        ticker: Ticker,
+        time: Moment,
+        did: IdentityId,
+    ) -> DispatchResult {
         let due_time = DueCheckpointTimestamps {
             scheduled: time,
             now: None,
@@ -1851,7 +1853,7 @@ impl<T: Trait> Module<T> {
     /// storage that can be reused or `None` if there is no due checkpoint.
     fn is_checkpoint_due(ticker: &Ticker) -> Option<DueCheckpointTimestamps> {
         if NextCheckpoints::contains_key(ticker) {
-            let now = T::UnixTime::now().as_secs().saturated_into::<u64>();
+            let now = Self::now_unix();
             let scheduled = Self::next_checkpoints(ticker);
             if scheduled <= now {
                 return Some(DueCheckpointTimestamps {
@@ -2003,9 +2005,9 @@ impl<T: Trait> Module<T> {
 
     /// Transfer the given `ticker`'s registration from `from` to `to`.
     fn transfer_ticker(ticker: Ticker, to: IdentityId, from: IdentityId) {
-        <AssetOwnershipRelations>::remove(from, ticker);
-        <AssetOwnershipRelations>::insert(to, ticker, AssetOwnershipRelation::TickerOwned);
-        <Tickers<T>>::mutate(&ticker, |tr| tr.owner = to);
+        AssetOwnershipRelations::remove(from, ticker);
+        AssetOwnershipRelations::insert(to, ticker, AssetOwnershipRelation::TickerOwned);
+        Tickers::mutate(&ticker, |tr| tr.owner = to);
         Self::deposit_event(RawEvent::TickerTransferred(to, ticker, from));
     }
 
@@ -2052,11 +2054,11 @@ impl<T: Trait> Module<T> {
         Self::consume_auth_by_owner(&ticker, to_did, auth_id)?;
 
         let ticker_details = Self::ticker_registration(&ticker);
-        <AssetOwnershipRelations>::remove(ticker_details.owner, ticker);
+        AssetOwnershipRelations::remove(ticker_details.owner, ticker);
 
-        <AssetOwnershipRelations>::insert(to_did, ticker, AssetOwnershipRelation::AssetOwned);
+        AssetOwnershipRelations::insert(to_did, ticker, AssetOwnershipRelation::AssetOwned);
 
-        <Tickers<T>>::mutate(&ticker, |tr| tr.owner = to_did);
+        Tickers::mutate(&ticker, |tr| tr.owner = to_did);
         let owner = <Tokens<T>>::mutate(&ticker, |tr| mem::replace(&mut tr.owner_did, to_did));
 
         Self::deposit_event(RawEvent::AssetOwnershipTransferred(to_did, ticker, owner));

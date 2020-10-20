@@ -21,6 +21,7 @@
 
 use blake2::{Blake2b, Digest};
 use curve25519_dalek::scalar::Scalar;
+use derive_more::{Add, AddAssign, From, SubAssign};
 use polymesh_primitives_derive::VecU8StrongTyped;
 #[cfg(feature = "std")]
 use sp_runtime::{Deserialize, Serialize};
@@ -38,7 +39,38 @@ pub use sp_runtime::{
 pub type BlockNumber = u32;
 
 /// An instant or duration in time.
-pub type Moment = u64;
+#[derive(
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    Ord,
+    PartialOrd,
+    Default,
+    Debug,
+    Encode,
+    Decode,
+    Add,
+    From,
+    AddAssign,
+    SubAssign,
+)]
+#[cfg_attr(feature = "std", derive(Deserialize, Serialize))]
+pub struct Moment(pub u64);
+
+macro_rules! from {
+    ($f:ty) => {
+        impl From<$f> for Moment {
+            fn from(x: $f) -> Self {
+                Self(x.into())
+            }
+        }
+    };
+}
+
+from!(u8);
+from!(u16);
+from!(u32);
 
 /// Alias to 512-bit hash when used in the context of a signature on the relay chain.
 /// Equipped with logic for possibly "unsigned" messages.
