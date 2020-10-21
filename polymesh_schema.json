@@ -715,7 +715,8 @@
         "ExtensionAttributes": {
             "usage_fee":"Balance",
             "version":"MetaVersion"
-        }
+        },
+        "ExtVersion": "u32"
     },
     "rpc": {
         "compliance": {
