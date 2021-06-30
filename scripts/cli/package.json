@@ -51,7 +51,7 @@
     "@polkadot/util": "6.9.1",
     "@polkadot/util-crypto": "6.9.1",
     "chai": "4.2.0",
-    "chalk": "4.1.0",
+    "chalk": "4.1.1",
     "clear": "0.1.0",
     "cli-progress": "3.9.0",
     "command-line-args": "5.1.1",
