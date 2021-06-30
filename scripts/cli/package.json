@@ -55,7 +55,7 @@
     "clear": "0.1.0",
     "cli-progress": "3.9.0",
     "command-line-args": "5.1.1",
-    "commander": "7.0.0",
+    "commander": "7.2.0",
     "crypto-random-string": "3.3.0",
     "esm": "3.2.25",
     "export-to-csv": "^0.2.1",
